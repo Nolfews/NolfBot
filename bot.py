@@ -3,6 +3,7 @@ from discord.ext import tasks
 import datetime
 import os
 
+print("TOKEN dans l'environnement :", os.getenv("TOKEN"))
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1480505357687062629
 USER_ID = 1070965951564107817
@@ -106,6 +107,7 @@ async def on_reaction_add(reaction, user):
                 )
 
                 await reaction.message.reply(embed=embed)
+
 
 
 client.run(TOKEN)
