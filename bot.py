@@ -1,113 +1,112 @@
 import discord
 from discord.ext import tasks
 import datetime
+import pytz
+import requests
 import os
 
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1480505357687062629
 USER_ID = 1070965951564107817
-
+timezone = pytz.timezone("Europe/Paris")
 intents = discord.Intents.default()
-intents.message_content = True
-intents.reactions = True
-intents.members = True
-
 client = discord.Client(intents=intents)
-
-message_rappel = None
 rappel_valide = False
 
+# ---------- CAT API ----------
+def get_random_cat():
+    try:
+        r = requests.get("https://api.thecatapi.com/v1/images/search")
+        data = r.json()
+        return data[0]["url"]
+    except:
+        return None
 
-@client.event
-async def on_ready():
-    print(f"Bot connecté : {client.user}")
-    rappel_19h30.start()
-    rappel_20h30.start()
+# ---------- button ----------
+class ValidationView(discord.ui.View):
 
+    def __init__(self):
+        super().__init__(timeout=None)
 
-# 📌 Premier rappel
-@tasks.loop(minutes=1)
-async def rappel_19h30():
-    global message_rappel, rappel_valide
+    @discord.ui.button(label="C'est fait", style=discord.ButtonStyle.success, emoji="✅")
+    async def valider(self, interaction: discord.Interaction, button: discord.ui.Button):
 
-    now = datetime.datetime.now()
+        global rappel_valide
 
-    if now.hour == 19 and now.minute == 30:
+        if interaction.user.id != USER_ID:
+            await interaction.response.send_message(
+                "Ce rappel ne te concerne pas 👀",
+                ephemeral=True
+            )
+            return
 
-        rappel_valide = False
+        rappel_valide = True
 
-        channel = client.get_channel(CHANNEL_ID)
+        embed = discord.Embed(
+            title="✅ Validé",
+            description="Mission accomplie UwU",
+            color=discord.Color.green()
+        )
+
+        await interaction.response.send_message(embed=embed)
+
+# ---------- display reminder ----------
+async def envoyer_rappel(type_rappel):
+
+    channel = client.get_channel(CHANNEL_ID)
+
+    cat = get_random_cat()
+
+    if type_rappel == "first":
 
         embed = discord.Embed(
             title="📌 Rappel quoti Genshin",
-            description="Clique sur ✅ quand c'est fait.",
+            description="Clique sur le bouton quand c'est fait.",
             color=discord.Color.orange()
         )
 
-        embed.add_field(
-            name="Action à faire",
-            value="Ton rappel du jour.",
-            inline=False
+    else:
+
+        embed = discord.Embed(
+            title="⚠️ Rappel",
+            description="Toujours pas validé 👀",
+            color=discord.Color.red()
         )
 
-        message_rappel = await channel.send(f"<@{USER_ID}>", embed=embed)
+    embed.add_field(
+        name="Action à faire",
+        value="Ton rappel du jour.",
+        inline=False
+    )
 
-        await message_rappel.add_reaction("✅")
+    if cat:
+        embed.set_image(url=cat)
 
+    view = ValidationView()
 
-# 📌 Deuxième rappel
+    await channel.send(f"<@{USER_ID}>", embed=embed, view=view)
+
+# ---------- Main loop ----------
 @tasks.loop(minutes=1)
-async def rappel_20h30():
+async def check_rappels():
+
     global rappel_valide
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(timezone)
 
-    if now.hour == 20 and now.minute == 30:
+    if now.hour == 0 and now.minute == 0:
+        rappel_valide = False
 
-        if rappel_valide is False:
+    if now.hour == 19 and now.minute == 30:
+        rappel_valide = False
+        await envoyer_rappel("first")
 
-            channel = client.get_channel(CHANNEL_ID)
+    if now.hour == 20 and now.minute == 30 and rappel_valide is False:
+        await envoyer_rappel("second")
 
-            embed = discord.Embed(
-                title="⚠️ Rappel",
-                description="Toujours pas validé.",
-                color=discord.Color.red()
-            )
-
-            embed.add_field(
-                name="Action à faire",
-                value="Pense à cliquer sur ✅ quand c'est fait.",
-                inline=False
-            )
-
-            await channel.send(f"<@{USER_ID}>", embed=embed)
-
-
-# 📌 Gestion des réactions
+# ---------- READY ----------
 @client.event
-async def on_reaction_add(reaction, user):
-    global rappel_valide
-
-    if user.bot:
-        return
-
-    if reaction.message.id == message_rappel.id:
-
-        if str(reaction.emoji) == "✅":
-
-            if user.id == USER_ID:
-
-                rappel_valide = True
-
-                embed = discord.Embed(
-                    title="✅ Validé",
-                    description="Mission accomplis UwU.",
-                    color=discord.Color.green()
-                )
-
-                await reaction.message.reply(embed=embed)
-
-
+async def on_ready():
+    check_rappels.start()
 
 client.run(TOKEN)
-
